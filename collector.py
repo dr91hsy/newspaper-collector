@@ -101,7 +101,7 @@ def fetch_and_save():
 
     with open(filepath, "w", encoding="utf-8") as f:
         f.write("==================================================\n")
-        f.write(f"   조중동 & 한경오 분류별 오피니언 모음 ({today})\n")
+        f.write(f"   오피니언 모음 ({today})\n")
         f.write("==================================================\n\n")
 
         for category_name, items in classified_data.items():
@@ -137,9 +137,9 @@ def send_email(filepath, filename):
     msg = MIMEMultipart()
     msg['From'] = mail_user
     msg['To'] = to_mail
-    msg['Subject'] = f"[분류별 칼럼 모음] {filename}"
+    msg['Subject'] = f"[칼럼 모음] {filename}"
 
-    msg.attach(MIMEText("오늘 자 조중동 & 한경오 카테고리별 칼럼 모음 txt 파일입니다.", 'plain', 'utf-8'))
+    msg.attach(MIMEText("오늘 자 주요언론사 카테고리별 칼럼 모음입니다.", 'plain', 'utf-8'))
 
     with open(filepath, 'rb') as f:
         part = MIMEApplication(f.read(), Name=filename)
