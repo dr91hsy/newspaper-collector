@@ -11,12 +11,12 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Check out repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6 # v4 -> v6으로 버전 업그레이드
 
       - name: Set up Python
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v6 # v5 -> v6으로 버전 업그레이드
         with:
-          python-version: '3.11' # 최신 Python 버전 적용
+          python-version: '3.11'
 
       - name: Install dependencies
         run: |
