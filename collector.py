@@ -7,7 +7,7 @@ from email.mime.multipart import MIMEMultipart
 from email.mime.application import MIMEApplication
 import feedparser
 from bs4 import BeautifulSoup
-import requests # requests 모듈 활용
+import requests
 
 # RSS 피드 주소 목록
 RSS_FEEDS = {
@@ -19,17 +19,63 @@ RSS_FEEDS = {
     "오마이뉴스": "http://rss.ohmynews.com/rss/opinion.xml",
 }
 
-def clean_html(raw_html):
-    """HTML 태그 제거 및 텍스트 정화"""
-    if not raw_html:
-        return ""
-    soup = BeautifulSoup(raw_html, "html.parser")
-    text = soup.get_text(separator="\n")
-    text = re.sub(r'\n\s*\n', '\n\n', text)
-    return text.strip()
+# 브라우저 접속 위장용 헤더
+HEADERS = {
+    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+}
 
-def classify_entry(title, summary=""):
-    """제목 및 본문 키워드 기반 4대 카테고리 자동 분류"""
+def fetch_full_content(url, press):
+    """기사 URL 접속 후 언론사별 본문 전체 크롤링 및 불필요 요소 제거"""
+    if not url:
+        return ""
+    try:
+        res = requests.get(url, headers=HEADERS, timeout=10)
+        res.encoding = res.apparent_encoding or 'utf-8'
+        soup = BeautifulSoup(res.text, "html.parser")
+
+        # 불필요한 태그 제거 (스크립트, 스타일, 주석, 광고 등)
+        for element in soup(["script", "style", "aside", "nav", "footer", "iframe", "header"]):
+            element.extract()
+
+        article_body = None
+
+        # 언론사별 본문 영역 지정
+        if press == "조선일보":
+            article_body = soup.find("section", class_=re.compile(r"article-body")) or soup.find("section", id="article-body")
+        elif press == "중앙일보":
+            article_body = soup.find("div", class_=re.compile(r"article_body")) or soup.find("div", id="article_body")
+        elif press == "동아일보":
+            article_body = soup.find("div", class_=re.compile(r"article_txt")) or soup.find("section", class_="news_view")
+        elif press == "한겨레":
+            article_body = soup.find("div", class_="text") or soup.find("div", class_=re.compile(r"article-text"))
+        elif press == "경향신문":
+            article_body = soup.find("div", class_="art_body") or soup.find("div", id="articleBody")
+        elif press == "오마이뉴스":
+            article_body = soup.find("div", class_="at_contents") or soup.find("div", class_="mini_at_contents")
+
+        # 공통 예비(fallback) 본문 검색
+        if not article_body:
+            article_body = soup.find("article") or soup.find("main")
+
+        if article_body:
+            # 본문 내 이미지 설명, 기자 정보 등 잡다한 요소 제거
+            for noise in article_body.find_all(["figure", "figcaption", "script", "button"]):
+                noise.extract()
+            text = article_body.get_text(separator="\n")
+        else:
+            text = soup.get_text(separator="\n")
+
+        # 줄바꿈 정돈 및 정제
+        lines = [line.strip() for line in text.splitlines() if line.strip()]
+        clean_text = "\n\n".join(lines)
+        return clean_text
+
+    except Exception as e:
+        print(f"[{press}] 본문 원문 수집 실패 ({url}): {e}")
+        return ""
+
+def classify_entry(title):
+    """제목 기반 4대 카테고리 자동 분류"""
     title_lower = title.lower()
     
     # 1. 사설
@@ -69,55 +115,53 @@ def fetch_and_save():
         "4. 기타/문화·에세이 (General & Essay)": []
     }
 
-    # 브라우저 차단 회피용 User-Agent 헤더
-    headers = {
-        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
-    }
-
-    print("오피니언 데이터 수집 및 분류 중...")
+    print("오피니언 RSS 수집 및 본문 크롤링 시작...")
 
     for press, url in RSS_FEEDS.items():
         try:
-            # requests로 헤더를 실어서 안전하게 RSS 데이터 가져오기 (타임아웃 10초 설정)
-            response = requests.get(url, headers=headers, timeout=10)
+            response = requests.get(url, headers=HEADERS, timeout=10)
             feed = feedparser.parse(response.content)
 
             if not feed.entries:
-                print(f"[{press}] 수집된 기사 없음 또는 서버 응답 비어있음.")
+                print(f"[{press}] 수집된 기사 목록 없음")
                 continue
 
             for entry in feed.entries:
-                title = entry.get("title", "제목 없음")
-                link = entry.get("link", "")
+                title = entry.get("title", "제목 없음").strip()
+                link = entry.get("link", "").strip()
                 pub_date = entry.get("published", entry.get("updated", "날짜 정보 없음"))
 
-                content = ""
-                if "content" in entry:
-                    content = entry.content[0].value
-                elif "summary" in entry:
-                    content = entry.summary
-                elif "description" in entry:
-                    content = entry.description
+                # 기사 URL에 직접 접속하여 전문 크롤링
+                full_content = fetch_full_content(link, press)
 
-                clean_content = clean_html(content)
-                category = classify_entry(title, clean_content)
+                # 크롤링 실패 시 RSS 기본 요약문 가져오기 (fallback)
+                if not full_content:
+                    if "content" in entry:
+                        full_content = entry.content[0].value
+                    elif "summary" in entry:
+                        full_content = entry.summary
+                    elif "description" in entry:
+                        full_content = entry.description
+                    full_content = BeautifulSoup(full_content, "html.parser").get_text(separator="\n").strip()
+
+                category = classify_entry(title)
 
                 classified_data[category].append({
                     "press": press,
                     "title": title,
                     "pub_date": pub_date,
                     "link": link,
-                    "content": clean_content
+                    "content": full_content
                 })
+                print(f"  - [{press}] {title[:20]}... (수집 완료)")
 
         except Exception as e:
-            # 특정 언론사 서버 오류가 나더라도 스크립트가 죽지 않고 넘어가도록 예외 처리
-            print(f"[{press}] 수집 실패 (네트워크/서버 오류): {e}")
+            print(f"[{press}] RSS 피드 수집 실패: {e}")
             continue
 
     with open(filepath, "w", encoding="utf-8") as f:
         f.write("==================================================\n")
-        f.write(f"   조중동 & 한경오 분류별 오피니언 모음 ({today})\n")
+        f.write(f"   조중동 & 한경오 분류별 오피니언 전문 모음 ({today})\n")
         f.write("==================================================\n\n")
 
         for category_name, items in classified_data.items():
@@ -137,7 +181,7 @@ def fetch_and_save():
                 f.write(f"{item['content']}\n")
                 f.write("\n" + "=" * 40 + "\n\n")
 
-    print(f"수집 완료: {filepath}")
+    print(f"전체 수집 완료: {filepath}")
     return filepath, f"opinions_{today}.txt"
 
 def send_email(filepath, filename):
