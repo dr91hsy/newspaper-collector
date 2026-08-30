@@ -7,6 +7,7 @@ from email.mime.multipart import MIMEMultipart
 from email.mime.application import MIMEApplication
 import feedparser
 from bs4 import BeautifulSoup
+import requests # requests 모듈 활용
 
 # RSS 피드 주소 목록
 RSS_FEEDS = {
@@ -68,40 +69,55 @@ def fetch_and_save():
         "4. 기타/문화·에세이 (General & Essay)": []
     }
 
+    # 브라우저 차단 회피용 User-Agent 헤더
+    headers = {
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+    }
+
     print("오피니언 데이터 수집 및 분류 중...")
 
     for press, url in RSS_FEEDS.items():
-        feed = feedparser.parse(url)
-        if not feed.entries:
+        try:
+            # requests로 헤더를 실어서 안전하게 RSS 데이터 가져오기 (타임아웃 10초 설정)
+            response = requests.get(url, headers=headers, timeout=10)
+            feed = feedparser.parse(response.content)
+
+            if not feed.entries:
+                print(f"[{press}] 수집된 기사 없음 또는 서버 응답 비어있음.")
+                continue
+
+            for entry in feed.entries:
+                title = entry.get("title", "제목 없음")
+                link = entry.get("link", "")
+                pub_date = entry.get("published", entry.get("updated", "날짜 정보 없음"))
+
+                content = ""
+                if "content" in entry:
+                    content = entry.content[0].value
+                elif "summary" in entry:
+                    content = entry.summary
+                elif "description" in entry:
+                    content = entry.description
+
+                clean_content = clean_html(content)
+                category = classify_entry(title, clean_content)
+
+                classified_data[category].append({
+                    "press": press,
+                    "title": title,
+                    "pub_date": pub_date,
+                    "link": link,
+                    "content": clean_content
+                })
+
+        except Exception as e:
+            # 특정 언론사 서버 오류가 나더라도 스크립트가 죽지 않고 넘어가도록 예외 처리
+            print(f"[{press}] 수집 실패 (네트워크/서버 오류): {e}")
             continue
-
-        for entry in feed.entries:
-            title = entry.get("title", "제목 없음")
-            link = entry.get("link", "")
-            pub_date = entry.get("published", entry.get("updated", "날짜 정보 없음"))
-
-            content = ""
-            if "content" in entry:
-                content = entry.content[0].value
-            elif "summary" in entry:
-                content = entry.summary
-            elif "description" in entry:
-                content = entry.description
-
-            clean_content = clean_html(content)
-            category = classify_entry(title, clean_content)
-
-            classified_data[category].append({
-                "press": press,
-                "title": title,
-                "pub_date": pub_date,
-                "link": link,
-                "content": clean_content
-            })
 
     with open(filepath, "w", encoding="utf-8") as f:
         f.write("==================================================\n")
-        f.write(f"   오피니언 모음 ({today})\n")
+        f.write(f"   조중동 & 한경오 분류별 오피니언 모음 ({today})\n")
         f.write("==================================================\n\n")
 
         for category_name, items in classified_data.items():
@@ -137,9 +153,9 @@ def send_email(filepath, filename):
     msg = MIMEMultipart()
     msg['From'] = mail_user
     msg['To'] = to_mail
-    msg['Subject'] = f"[칼럼 모음] {filename}"
+    msg['Subject'] = f"[분류별 칼럼 모음] {filename}"
 
-    msg.attach(MIMEText("오늘 자 주요언론사 카테고리별 칼럼 모음입니다.", 'plain', 'utf-8'))
+    msg.attach(MIMEText("오늘 자 조중동 & 한경오 카테고리별 칼럼 모음 txt 파일입니다.", 'plain', 'utf-8'))
 
     with open(filepath, 'rb') as f:
         part = MIMEApplication(f.read(), Name=filename)
