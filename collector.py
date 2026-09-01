@@ -30,13 +30,10 @@ def fetch_full_content(url, press):
         res.encoding = res.apparent_encoding or 'utf-8'
         soup = BeautifulSoup(res.text, "html.parser")
 
-        # 불필요한 태그 미리 제거
         for noise in soup(["script", "style", "aside", "nav", "footer", "iframe", "header", "form", "button"]):
             noise.extract()
 
         article_body = None
-
-        # 언론사별 정밀 본문 태그 타겟팅
         if press == "조선일보":
             article_body = soup.find("section", class_=re.compile(r"article-body|article-content")) or soup.select_one(".article-body")
         elif press == "중앙일보":
@@ -50,39 +47,34 @@ def fetch_full_content(url, press):
         elif press == "오마이뉴스":
             article_body = soup.find("div", class_=re.compile(r"at_contents|mini_at_contents")) or soup.select_one(".at_contents")
 
-        # 예외 처리: 지정 태그가 없을 경우 공통 컨테이너 탐색
         if not article_body:
             article_body = soup.find("article") or soup.find("main")
 
         if article_body:
-            # 본문 내부 기고자 소개, 이미지 설명 등 노이즈 제거
             for extra in article_body.find_all(["figure", "figcaption", "table", "div"]):
                 if extra.get("class") and any(c in str(extra.get("class")) for c in ["byline", "reporter", "img", "photo", "copyright"]):
                     extra.extract()
-            
-            # 본문 텍스트 획득 (줄바꿈 보존)
             text = article_body.get_text(separator="\n")
         else:
             text = ""
 
-        # 빈 줄 정돈 및 가독성 다듬기
         lines = [line.strip() for line in text.splitlines() if line.strip() and len(line.strip()) > 5]
         return "\n\n".join(lines)
     except Exception as e:
         print(f"[{press}] 원문 수집 실패: {e}")
         return ""
 
-def classify_entry(title):
-    title_lower = title.lower()
-    if "사설" in title_lower or "[사설]" in title or "社說" in title:
-        return "사설"
-    staff_keywords = ["태평로", "만물상", "팔면봉", "분수대", "시시각각", "오늘과 내일", "아침햇살", "유레카", "여적", "경향시론", "횡설수설", "기자수첩", "데스크 칼럼"]
-    if any(kw in title for kw in staff_keywords):
-        return "자사 칼럼"
-    guest_keywords = ["시론", "포럼", "아침을 열며", "시사칼럼", "광장", "특별기고", "시평", "공감"]
-    if any(kw in title for kw in guest_keywords):
-        return "외부 기고/시론"
-    return "기타/에세이"
+def is_essay_only(title):
+    # 사설 및 딱딱한 정교 정치/사회 논설 키워드 필터링 (제외 대상)
+    exclude_keywords = [
+        "사설", "[사설]", "社說", "태평로", "만물상", "팔면봉", "분수대", 
+        "오늘과 내일", "유레카", "여적", "횡설수설", "시론", "포럼", "특별기고", "시평"
+    ]
+    if any(kw in title for kw in exclude_keywords):
+        return False
+    
+    # 사설/정치논설이 아닌 에세이, 삶, 문화, 인문, 자유 기고만 남김
+    return True
 
 def fetch_and_save():
     today = datetime.now().strftime("%Y-%m-%d")
@@ -99,29 +91,35 @@ def fetch_and_save():
             response = requests.get(url, headers=HEADERS, timeout=10)
             feed = feedparser.parse(response.content)
 
-            for entry in feed.entries[:10]: # 최근 10개 우선 수집
+            press_count = 0
+            for entry in feed.entries:
+                if press_count >= 2: # 언론사당 에세이/문화 칼럼 최대 2개만 선별
+                    break
+
                 title = entry.get("title", "제목 없음").strip()
+
+                # 사설/정치논설 제외하고 에세이류만 수집
+                if not is_essay_only(title):
+                    continue
+
                 link = entry.get("link", "").strip()
                 pub_date = entry.get("published", entry.get("updated", today))
-
                 full_content = fetch_full_content(link, press)
-                
-                # 원문 추출이 실패한 경우에만 RSS 요약본으로 대체
+
                 if not full_content or len(full_content) < 50:
                     if "summary" in entry:
                         full_content = BeautifulSoup(entry.summary, "html.parser").get_text().strip()
-
-                category = classify_entry(title)
 
                 articles.append({
                     "id": f"{press}_{abs(hash(title))}",
                     "press": press,
                     "title": title,
-                    "category": category,
+                    "category": "에세이/삶",
                     "pub_date": pub_date,
                     "link": link,
                     "content": full_content or "본문 내용을 가져올 수 없습니다."
                 })
+                press_count += 1
         except Exception as e:
             print(f"[{press}] RSS 오류: {e}")
 
@@ -138,7 +136,7 @@ def fetch_and_save():
     with open(latest_file, "w", encoding="utf-8") as f:
         json.dump(db_payload, f, ensure_ascii=False, indent=2)
 
-    print(f"JSON DB 저장 완료: {daily_file} (총 {len(articles)}건)")
+    print(f"JSON DB 저장 완료: {daily_file} (에세이/삶 칼럼 총 {len(articles)}건)")
 
 def send_email():
     mail_user = os.getenv("MAIL_USER")
@@ -152,12 +150,12 @@ def send_email():
     msg = MIMEMultipart("alternative")
     msg['From'] = mail_user
     msg['To'] = to_mail
-    msg['Subject'] = f"[칼럼 모음] {datetime.now().strftime('%Y-%m-%d')} 일간 리포트"
+    msg['Subject'] = f"[에세이 리포트] {datetime.now().strftime('%Y-%m-%d')} 아침 생각거리 모음"
 
     html_body = f"""
     <div style="font-family: sans-serif; padding: 20px; max-width: 500px; border: 1px solid #e2e8f0; border-radius: 12px;">
-      <h2 style="color: #0f172a;">📰 오늘 자 오피니언 칼럼 모음</h2>
-      <p style="color: #475569; line-height: 1.5;">오늘 자 주요 언론사 오피니언 전문 수집이 완료되었습니다.<br>아래 버튼을 눌러 모바일/데스크톱 카드 뷰어 앱으로 바로 이동하세요.</p>
+      <h2 style="color: #0f172a;">☕ 오늘 자 에세이·생각거리 모음</h2>
+      <p style="color: #475569; line-height: 1.5;">사설과 정치 논설을 제외한 주요 언론사의 에세이/문화 칼럼 수집이 완료되었습니다.<br>아래 버튼을 눌러 모바일 카드 뷰어로 편안하게 읽어보세요.</p>
       <a href="{page_url}" style="display: inline-block; background: #2563eb; color: #ffffff; padding: 12px 24px; text-decoration: none; border-radius: 8px; font-weight: bold; margin-top: 10px;">웹 뷰어로 읽기</a>
     </div>
     """
