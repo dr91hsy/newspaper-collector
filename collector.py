@@ -95,11 +95,13 @@ def fetch_and_save():
     
     theme_info = themes.get(weekday, {"theme": "오늘의 에세이", "desc": "아침 에세이 큐레이션"})
 
-    output_dir = "opinions"
+    # 스크립트 실행 위치 기준 절대 경로 설정
+    BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+    output_dir = os.path.join(BASE_DIR, "opinions")
     os.makedirs(output_dir, exist_ok=True)
     
     daily_file = os.path.join(output_dir, f"{today_str}.json")
-    latest_file = "data.json"
+    latest_file = os.path.join(BASE_DIR, "data.json")
 
     history = load_history()
     cutoff_date = (now - timedelta(days=3)).strftime("%Y-%m-%d")
