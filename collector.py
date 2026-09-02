@@ -2,12 +2,10 @@ import os
 import re
 import json
 from datetime import datetime, timedelta
-import smtplib
-from email.mime.text import MIMEText
-from email.mime.multipart import MIMEMultipart
 import feedparser
 from bs4 import BeautifulSoup
 import requests
+from pywebpush import webpush, WebPushException
 
 # 전달해주신 RSS URL 최종 반영
 PRESS_CONFIG = {
@@ -167,53 +165,49 @@ def fetch_and_save():
         json.dump(db_payload, f, ensure_ascii=False, indent=2)
 
     print(f"총 {len(selected_articles)}개 기사 수집 및 저장 완료.")
+    return db_payload
 
-def send_email():
-    mail_user = os.getenv("MAIL_USER")
-    mail_pass = os.getenv("MAIL_PASS")
-    to_mail = os.getenv("TO_MAIL")
+def send_push_notification(payload):
+    """수집이 끝나면 등록된 기기로 Web Push 알림을 보낸다.
+    필요한 값(VAPID_PRIVATE_KEY, VAPID_SUBJECT, PUSH_SUBSCRIPTION)이 아직 없으면
+    (=폰에서 아직 알림 구독을 안 했으면) 조용히 건너뛴다."""
+    vapid_private_key = os.getenv("VAPID_PRIVATE_KEY")
+    vapid_subject = os.getenv("VAPID_SUBJECT")
+    subscription_raw = os.getenv("PUSH_SUBSCRIPTION")
     page_url = os.getenv("PWA_URL", "https://dr91hsy.github.io/newspaper-collector/")
 
-    if not mail_user or not mail_pass or not to_mail:
+    if not vapid_private_key or not vapid_subject or not subscription_raw:
+        print("푸시 알림 설정이 아직 없어 발송을 건너뜁니다 (VAPID_PRIVATE_KEY/VAPID_SUBJECT/PUSH_SUBSCRIPTION).")
         return
 
-    now = datetime.now()
-    config = load_config()
-    theme_name = config.get("themes", {}).get(str(now.weekday()), {}).get("theme", "오늘의 에세이")
-
-    # 구글 리다이렉트를 활용한 인앱 브라우저 우회 URL
-    bypass_url = f"https://www.google.com/url?q={page_url}"
-
-    msg = MIMEMultipart("alternative")
-    msg['From'] = mail_user
-    msg['To'] = to_mail
-    msg['Subject'] = f"[{theme_name}] {now.strftime('%Y-%m-%d')} 아침 에세이"
-
-    html_body = f"""
-    <div style="font-family: sans-serif; padding: 20px; max-width: 500px; border: 1px solid #e2e8f0; border-radius: 12px; background-color: #ffffff;">
-      <h2 style="color: #0f172a; margin-top:0;">☕ 오늘 자 에세이 큐레이션</h2>
-      <p style="color: #2563eb; font-weight: bold; margin-bottom: 5px;">오늘의 테마: {theme_name}</p>
-      <p style="color: #475569; font-size: 13px; line-height: 1.5;">그룹웨어 내에서 페이지가 열릴 경우, 화면 상단의 <b>[주소 복사]</b>를 눌러 사파리나 크롬에 붙여넣어 주세요.</p>
-      
-      <div style="margin: 20px 0;">
-        <a href="{bypass_url}" target="_blank" style="display: block; text-align: center; background: #2563eb; color: #ffffff; padding: 14px 0; text-decoration: none; border-radius: 10px; font-weight: bold; font-size: 15px;">🌐 에세이 뷰어 열기</a>
-      </div>
-
-      <div style="background-color: #f8fafc; padding: 12px; border-radius: 8px; border: 1px solid #e2e8f0; font-size: 12px; color: #64748b; word-break: break-all;">
-        <b>직접 접속 주소:</b><br>{page_url}
-      </div>
-    </div>
-    """
-    msg.attach(MIMEText(html_body, 'html', 'utf-8'))
+    if not payload or not payload.get("total_count"):
+        print("새로 수집된 기사가 없어 알림을 보내지 않습니다.")
+        return
 
     try:
-        server = smtplib.SMTP_SSL('smtp.gmail.com', 465)
-        server.login(mail_user, mail_pass)
-        server.send_message(msg)
-        server.close()
-    except Exception as e:
-        print(f"메일 발송 오류: {e}")
+        subscription_info = json.loads(subscription_raw)
+    except json.JSONDecodeError as e:
+        print(f"PUSH_SUBSCRIPTION 파싱 실패: {e}")
+        return
+
+    theme_name = payload.get("theme", "오늘의 에세이")
+    total_count = payload.get("total_count", 0)
+
+    try:
+        webpush(
+            subscription_info=subscription_info,
+            data=json.dumps({
+                "title": f"[{theme_name}] 오늘의 에세이 도착",
+                "body": f"{total_count}개의 칼럼이 준비됐어요. 눌러서 확인해보세요.",
+                "url": page_url,
+            }, ensure_ascii=False),
+            vapid_private_key=vapid_private_key,
+            vapid_claims={"sub": vapid_subject},
+        )
+        print("푸시 알림 발송 완료.")
+    except WebPushException as e:
+        print(f"푸시 알림 발송 실패: {e}")
 
 if __name__ == "__main__":
-    fetch_and_save()
-    send_email()
+    result = fetch_and_save()
+    send_push_notification(result)

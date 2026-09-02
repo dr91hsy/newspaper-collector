@@ -71,3 +71,39 @@ self.addEventListener('fetch', (event) => {
     })
   );
 });
+
+// 새 에세이 도착 푸시 알림 수신
+self.addEventListener('push', (event) => {
+  let payload = { title: '아침 에세이 업데이트', body: '오늘의 에세이가 도착했어요.', url: './' };
+  if (event.data) {
+    try {
+      payload = { ...payload, ...event.data.json() };
+    } catch (e) {
+      payload.body = event.data.text();
+    }
+  }
+
+  event.waitUntil(
+    self.registration.showNotification(payload.title, {
+      body: payload.body,
+      icon: './icons/icon-192.png',
+      badge: './icons/icon-192.png',
+      data: { url: payload.url || './' },
+    })
+  );
+});
+
+// 알림 탭하면 이미 열린 탭이 있으면 포커스, 없으면 새로 열기
+self.addEventListener('notificationclick', (event) => {
+  event.notification.close();
+  const targetUrl = event.notification.data && event.notification.data.url ? event.notification.data.url : './';
+
+  event.waitUntil(
+    clients.matchAll({ type: 'window', includeUncontrolled: true }).then((windowClients) => {
+      for (const client of windowClients) {
+        if ('focus' in client) return client.focus();
+      }
+      if (clients.openWindow) return clients.openWindow(targetUrl);
+    })
+  );
+});

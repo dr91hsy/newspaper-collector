@@ -20,22 +20,17 @@
 </head>
 <body class="text-slate-800 flex flex-col min-h-screen justify-between">
 
-  <!-- 원터치 주소 복사 상단 바 -->
-  <div class="bg-slate-900 text-white text-xs px-4 py-2.5 flex items-center justify-between sticky top-0 z-30">
-    <span class="truncate pr-2">💡 외부 브라우저(Chrome/Safari) 이용 권장</span>
-    <button onclick="copyURL()" class="bg-blue-600 hover:bg-blue-500 text-white font-bold px-2.5 py-1 rounded text-xs shrink-0 active:scale-95 transition">
-      주소 복사
-    </button>
-  </div>
-
   <!-- 상단 헤더 & 테마 -->
-  <header class="bg-white/90 backdrop-blur border-b border-slate-200 px-4 py-3 shadow-sm sticky top-[37px] z-20">
+  <header class="bg-white/90 backdrop-blur border-b border-slate-200 px-4 py-3 shadow-sm sticky top-0 z-20">
     <div class="max-w-md mx-auto flex items-center justify-between">
       <div>
         <span id="theme-badge" class="inline-block bg-blue-100 text-blue-700 text-xs font-bold px-2 py-0.5 rounded-full mb-0.5">테마 로딩 중</span>
         <h1 class="text-lg font-bold text-slate-900" id="theme-desc">오늘의 에세이</h1>
       </div>
-      <input type="date" id="date-picker" class="text-xs border border-slate-300 rounded px-1.5 py-1 text-slate-600 bg-slate-50">
+      <div class="flex items-center gap-2">
+        <button id="subscribe-btn" title="새 에세이 알림 받기" aria-label="새 에세이 알림 받기" class="text-lg leading-none w-8 h-8 flex items-center justify-center rounded-full hover:bg-slate-100 active:scale-95 transition">🔔</button>
+        <input type="date" id="date-picker" class="text-xs border border-slate-300 rounded px-1.5 py-1 text-slate-600 bg-slate-50">
+      </div>
     </div>
   </header>
 
@@ -70,12 +65,6 @@
   <script>
     let articles = [];
     let currentIndex = 0;
-
-    function copyURL() {
-      navigator.clipboard.writeText(window.location.href).then(() => {
-        alert("주소가 복사되었습니다! Chrome이나 Safari 앱을 열고 주소창에 붙여넣어 주세요.");
-      });
-    }
 
     async function loadArticles(dateStr = null) {
       const url = dateStr ? `opinions/${dateStr}.json` : 'data.json';
@@ -137,6 +126,73 @@
           console.warn('서비스 워커 등록 실패:', err);
         });
       });
+    }
+
+    // ── 새 에세이 도착 알림(Web Push) 구독 ──────────────────────────────
+    // VAPID 공개키는 브라우저가 구독을 만들 때 쓰는 값으로, 공개되어도 안전함
+    // (실제 발송 권한은 서버(=GitHub Actions)만 아는 개인키로 검증됨).
+    const VAPID_PUBLIC_KEY = 'BCFiFxUi3c_Au56Bxdd1grBp8hJPgspyQhohjlrKoTgNyP1n799w8FRSnDE1UYAb6Z3PAg8SB7xmQ2PL2_OB7gU';
+
+    function urlBase64ToUint8Array(base64String) {
+      const padding = '='.repeat((4 - (base64String.length % 4)) % 4);
+      const base64 = (base64String + padding).replace(/-/g, '+').replace(/_/g, '/');
+      const rawData = atob(base64);
+      return Uint8Array.from([...rawData].map((c) => c.charCodeAt(0)));
+    }
+
+    async function subscribeToPush() {
+      if (!('serviceWorker' in navigator) || !('PushManager' in window)) {
+        alert('이 브라우저/앱은 푸시 알림을 지원하지 않아요.');
+        return;
+      }
+
+      const permission = await Notification.requestPermission();
+      if (permission !== 'granted') {
+        alert('알림 권한이 허용되지 않았어요. 브라우저/앱 설정에서 알림을 허용한 뒤 다시 눌러주세요.');
+        return;
+      }
+
+      const registration = await navigator.serviceWorker.ready;
+      let subscription = await registration.pushManager.getSubscription();
+      if (!subscription) {
+        subscription = await registration.pushManager.subscribe({
+          userVisibleOnly: true,
+          applicationServerKey: urlBase64ToUint8Array(VAPID_PUBLIC_KEY),
+        });
+      }
+
+      const subscriptionJson = JSON.stringify(subscription);
+
+      try {
+        await navigator.clipboard.writeText(subscriptionJson);
+        alert(
+          '구독 정보가 클립보드에 복사됐어요!\n\n' +
+          'GitHub 저장소 → Settings → Secrets and variables → Actions → New repository secret\n' +
+          '이름: PUSH_SUBSCRIPTION\n' +
+          '값: 방금 복사된 내용을 그대로 붙여넣기\n\n' +
+          '등록하면 다음 수집부터 이 기기로 알림이 와요.'
+        );
+      } catch (e) {
+        window.prompt(
+          '클립보드 복사에 실패했어요. 아래 값을 직접 복사해서\n' +
+          'GitHub 저장소 Settings → Secrets and variables → Actions 에\n' +
+          '이름 PUSH_SUBSCRIPTION 으로 등록해주세요:',
+          subscriptionJson
+        );
+      }
+
+      localStorage.setItem('pushSubscribed', '1');
+      document.getElementById('subscribe-btn').textContent = '🔔✓';
+    }
+
+    document.getElementById('subscribe-btn').addEventListener('click', subscribeToPush);
+
+    try {
+      if (localStorage.getItem('pushSubscribed') === '1') {
+        document.getElementById('subscribe-btn').textContent = '🔔✓';
+      }
+    } catch (e) {
+      /* 프라이빗 모드 등에서 localStorage 접근 실패해도 무시 */
     }
   </script>
 </body>
