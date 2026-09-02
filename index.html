@@ -5,7 +5,9 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
   <title>에세이 아침 카드 뷰어</title>
   <link rel="manifest" href="manifest.json">
-  <meta name="theme-color" content="#f8fafc">
+  <meta name="theme-color" content="#0f172a">
+  <meta name="mobile-web-app-capable" content="yes">
+  <link rel="icon" href="icons/icon-192.png">
   <script src="https://cdn.tailwindcss.com"></script>
   <style>
     body { background-color: #f8fafc; word-break: keep-all; -webkit-tap-highlight-color: transparent; }
@@ -124,6 +126,15 @@
     });
 
     loadArticles();
+
+    // PWA 서비스 워커 등록 (오프라인 캐싱 + 홈 화면 설치 지원)
+    if ('serviceWorker' in navigator) {
+      window.addEventListener('load', () => {
+        navigator.serviceWorker.register('sw.js').catch((err) => {
+          console.warn('서비스 워커 등록 실패:', err);
+        });
+      });
+    }
   </script>
 </body>
 </html>
