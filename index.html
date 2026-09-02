@@ -11,8 +11,11 @@
   <script src="https://cdn.tailwindcss.com"></script>
   <style>
     body { background-color: #f8fafc; word-break: keep-all; -webkit-tap-highlight-color: transparent; }
-    .content-area { padding-bottom: calc(5.5rem + env(safe-area-inset-bottom)); }
-    .bottom-nav { padding-bottom: calc(0.75rem + env(safe-area-inset-bottom)); }
+    /* Tailwind Play CDN이 자체 <style>을 뒤늦게 주입하면서 동일 우선순위의 p-4 같은
+       유틸리티 클래스가 아래 padding-bottom을 덮어써 하단 내비게이션 바에 본문 마지막
+       줄이 가려지는 문제가 있었음. main 태그 결합 선택자 + !important로 항상 이기게 고정. */
+    main.content-area { padding-bottom: calc(7rem + env(safe-area-inset-bottom)) !important; }
+    footer.bottom-nav { padding-bottom: calc(0.75rem + env(safe-area-inset-bottom)) !important; }
   </style>
 </head>
 <body class="text-slate-800 flex flex-col min-h-screen justify-between">
