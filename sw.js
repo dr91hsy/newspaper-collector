@@ -1,7 +1,5 @@
-const CACHE_NAME = 'essay-viewer-v1';
+const CACHE_NAME = 'essay-viewer-v2';
 const APP_SHELL = [
-  './',
-  './index.html',
   './manifest.json',
   './icons/icon-192.png',
   './icons/icon-512.png',
@@ -40,10 +38,14 @@ self.addEventListener('fetch', (event) => {
   if (request.method !== 'GET') return;
 
   const url = new URL(request.url);
-  const isDataRequest = url.origin === self.location.origin && url.pathname.endsWith('.json');
+  const isSameOrigin = url.origin === self.location.origin;
+  const isDataRequest = isSameOrigin && url.pathname.endsWith('.json');
+  const isPageRequest = request.mode === 'navigate' || (isSameOrigin && url.pathname.endsWith('.html'));
 
-  if (isDataRequest) {
-    // 데이터는 최신이 우선(네트워크 우선), 오프라인이면 마지막으로 캐시된 버전을 대신 보여준다.
+  if (isDataRequest || isPageRequest) {
+    // 데이터(json)와 페이지(html)는 항상 최신이 우선(네트워크 우선).
+    // 새 버전을 배포해도 캐시된 옛 화면이 계속 보이지 않도록, 온라인일 땐 무조건 서버 응답을 쓰고
+    // 오프라인일 때만 마지막으로 캐시된 버전을 대신 보여준다.
     event.respondWith(
       fetch(request)
         .then((response) => {
