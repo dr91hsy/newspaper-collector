@@ -3,6 +3,7 @@ const APP_SHELL = [
   './manifest.json',
   './icons/icon-192.png',
   './icons/icon-512.png',
+  './icons/badge-96.png',
 ];
 
 self.addEventListener('install', (event) => {
@@ -87,7 +88,8 @@ self.addEventListener('push', (event) => {
     self.registration.showNotification(payload.title, {
       body: payload.body,
       icon: './icons/icon-192.png',
-      badge: './icons/icon-192.png',
+      // badge는 안드로이드 상태바용 단색 실루엣 아이콘 (알파 채널만 사용, 컬러 무시됨)
+      badge: './icons/badge-96.png',
       data: { url: payload.url || './' },
     })
   );
