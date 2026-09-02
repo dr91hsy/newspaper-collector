@@ -1,4 +1,4 @@
-const CACHE_NAME = 'essay-viewer-v2';
+const CACHE_NAME = 'essay-viewer-v3';
 const APP_SHELL = [
   './manifest.json',
   './icons/icon-192.png',

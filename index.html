@@ -154,11 +154,22 @@
 
       const registration = await navigator.serviceWorker.ready;
       let subscription = await registration.pushManager.getSubscription();
+      const alreadySubscribed = !!subscription;
+
       if (!subscription) {
         subscription = await registration.pushManager.subscribe({
           userVisibleOnly: true,
           applicationServerKey: urlBase64ToUint8Array(VAPID_PUBLIC_KEY),
         });
+      }
+
+      // 이미 구독돼 있으면(=버튼을 또 눌렀을 뿐) 클립보드 복사/안내 팝업을 반복하지 않는다.
+      // (매번 클립보드에 쓸 때마다 안드로이드가 자체적으로 "복사됨" 알림을 띄우기 때문)
+      if (alreadySubscribed) {
+        localStorage.setItem('pushSubscribed', '1');
+        document.getElementById('subscribe-btn').textContent = '🔔✓';
+        alert('이미 이 기기로 알림 구독이 되어있어요. 다시 등록할 필요 없어요.');
+        return;
       }
 
       const subscriptionJson = JSON.stringify(subscription);
