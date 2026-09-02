@@ -8,28 +8,23 @@
   <meta name="theme-color" content="#f8fafc">
   <script src="https://cdn.tailwindcss.com"></script>
   <style>
-    body {
-      background-color: #f8fafc;
-      word-break: keep-all;
-      -webkit-tap-highlight-color: transparent;
-    }
-    .content-area {
-      padding-bottom: calc(5.5rem + env(safe-area-inset-bottom));
-    }
-    .bottom-nav {
-      padding-bottom: calc(0.75rem + env(safe-area-inset-bottom));
-    }
+    body { background-color: #f8fafc; word-break: keep-all; -webkit-tap-highlight-color: transparent; }
+    .content-area { padding-bottom: calc(5.5rem + env(safe-area-inset-bottom)); }
+    .bottom-nav { padding-bottom: calc(0.75rem + env(safe-area-inset-bottom)); }
   </style>
 </head>
 <body class="text-slate-800 flex flex-col min-h-screen justify-between">
 
-  <!-- 인앱 브라우저 감지 경고 배너 -->
-  <div id="inapp-warning" class="hidden bg-amber-500 text-white text-xs font-bold px-4 py-2 text-center sticky top-0 z-30">
-    💡 그룹웨어/앱 내부 브라우저입니다. 우측 상단 [...] 메뉴를 눌러 'Chrome/Safari로 열기'를 선택하시면 원활히 이용하실 수 있습니다.
+  <!-- 원터치 주소 복사 상단 바 -->
+  <div class="bg-slate-900 text-white text-xs px-4 py-2.5 flex items-center justify-between sticky top-0 z-30">
+    <span class="truncate pr-2">💡 외부 브라우저(Chrome/Safari) 이용 권장</span>
+    <button onclick="copyURL()" class="bg-blue-600 hover:bg-blue-500 text-white font-bold px-2.5 py-1 rounded text-xs shrink-0 active:scale-95 transition">
+      주소 복사
+    </button>
   </div>
 
-  <!-- 상단 헤더 & 오늘 테마 -->
-  <header class="sticky top-0 z-10 bg-white/90 backdrop-blur border-b border-slate-200 px-4 py-3 shadow-sm">
+  <!-- 상단 헤더 & 테마 -->
+  <header class="bg-white/90 backdrop-blur border-b border-slate-200 px-4 py-3 shadow-sm sticky top-[37px] z-20">
     <div class="max-w-md mx-auto flex items-center justify-between">
       <div>
         <span id="theme-badge" class="inline-block bg-blue-100 text-blue-700 text-xs font-bold px-2 py-0.5 rounded-full mb-0.5">테마 로딩 중</span>
@@ -44,7 +39,7 @@
     <div id="card-container" class="bg-white rounded-2xl p-6 shadow-md border border-slate-100">
       <div class="flex items-center justify-between mb-3">
         <span id="article-press" class="text-xs font-bold px-2.5 py-1 rounded-md bg-slate-100 text-slate-700">언론사</span>
-        <span id="article-group" class="text-xs font-medium text-slate-400">보수/진보</span>
+        <span id="article-group" class="text-xs font-medium text-slate-400">구분</span>
       </div>
       <h2 id="article-title" class="text-xl font-bold text-slate-900 leading-snug mb-4">칼럼 제목</h2>
       <hr class="border-slate-100 my-4">
@@ -60,7 +55,7 @@
       <button id="prev-btn" class="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl font-bold text-sm active:scale-95 transition">
         ◀ 이전
       </button>
-      <span id="page-indicator" class="text-sm font-semibold text-slate-500">1 / 4</span>
+      <span id="page-indicator" class="text-sm font-semibold text-slate-500">1 / 1</span>
       <button id="next-btn" class="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-xl font-bold text-sm active:scale-95 transition shadow-sm">
         다음 ▶
       </button>
@@ -71,13 +66,10 @@
     let articles = [];
     let currentIndex = 0;
 
-    // 인앱 브라우저 체크
-    function checkInApp() {
-      const ua = navigator.userAgent.toLowerCase();
-      const isInApp = ua.includes('kakao') || ua.includes('line') || ua.includes('works') || ua.includes('daou') || ua.includes('naver');
-      if (isInApp) {
-        document.getElementById('inapp-warning').classList.remove('hidden');
-      }
+    function copyURL() {
+      navigator.clipboard.writeText(window.location.href).then(() => {
+        alert("주소가 복사되었습니다! Chrome이나 Safari 앱을 열고 주소창에 붙여넣어 주세요.");
+      });
     }
 
     async function loadArticles(dateStr = null) {
@@ -96,7 +88,7 @@
         renderCard();
       } catch (err) {
         document.getElementById('article-title').innerText = "데이터를 불러올 수 없습니다";
-        document.getElementById('article-content').innerText = "선택하신 날짜의 칼럼 데이터가 아직 준비되지 않았거나 오류가 발생했습니다.";
+        document.getElementById('article-content').innerText = "선택하신 날짜의 데이터가 존재하지 않거나 수집된 기사가 없습니다.";
       }
     }
 
@@ -131,7 +123,6 @@
       loadArticles(e.target.value);
     });
 
-    checkInApp();
     loadArticles();
   </script>
 </body>
