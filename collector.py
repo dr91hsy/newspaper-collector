@@ -170,7 +170,7 @@ def send_email():
     mail_user = os.getenv("MAIL_USER")
     mail_pass = os.getenv("MAIL_PASS")
     to_mail = os.getenv("TO_MAIL")
-    page_url = os.getenv("PWA_URL", "#")
+    page_url = os.getenv("PWA_URL", "https://dr91hsy.github.io/newspaper-collector/")
 
     if not mail_user or not mail_pass or not to_mail:
         return
@@ -179,10 +179,8 @@ def send_email():
     config = load_config()
     theme_name = config.get("themes", {}).get(str(now.weekday()), {}).get("theme", "오늘의 에세이")
 
-    intent_url = page_url
-    if page_url.startswith("https://"):
-        raw_domain = page_url.replace("https://", "")
-        intent_url = f"intent://{raw_domain}#Intent;scheme=https;package=com.android.chrome;end"
+    # 구글 리다이렉트를 활용한 인앱 브라우저 우회 URL
+    bypass_url = f"https://www.google.com/url?q={page_url}"
 
     msg = MIMEMultipart("alternative")
     msg['From'] = mail_user
@@ -193,14 +191,14 @@ def send_email():
     <div style="font-family: sans-serif; padding: 20px; max-width: 500px; border: 1px solid #e2e8f0; border-radius: 12px; background-color: #ffffff;">
       <h2 style="color: #0f172a; margin-top:0;">☕ 오늘 자 에세이 큐레이션</h2>
       <p style="color: #2563eb; font-weight: bold; margin-bottom: 5px;">오늘의 테마: {theme_name}</p>
-      <p style="color: #475569; font-size: 14px; line-height: 1.5;">그룹웨어 갇힘 방지를 위해 아래 <b>[Chrome으로 열기]</b>를 클릭하시거나 주소를 복사해 브라우저에 붙여넣어 주세요.</p>
+      <p style="color: #475569; font-size: 13px; line-height: 1.5;">그룹웨어 내에서 페이지가 열릴 경우, 화면 상단의 <b>[주소 복사]</b>를 눌러 사파리나 크롬에 붙여넣어 주세요.</p>
       
       <div style="margin: 20px 0;">
-        <a href="{intent_url}" style="display: block; text-align: center; background: #2563eb; color: #ffffff; padding: 14px 0; text-decoration: none; border-radius: 10px; font-weight: bold; font-size: 15px;">🚀 Chrome 앱으로 직접 열기</a>
+        <a href="{bypass_url}" target="_blank" style="display: block; text-align: center; background: #2563eb; color: #ffffff; padding: 14px 0; text-decoration: none; border-radius: 10px; font-weight: bold; font-size: 15px;">🌐 에세이 뷰어 열기</a>
       </div>
 
       <div style="background-color: #f8fafc; padding: 12px; border-radius: 8px; border: 1px solid #e2e8f0; font-size: 12px; color: #64748b; word-break: break-all;">
-        <b>웹 주소 복사용:</b><br>{page_url}
+        <b>직접 접속 주소:</b><br>{page_url}
       </div>
     </div>
     """
