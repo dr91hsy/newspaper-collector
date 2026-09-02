@@ -11,10 +11,10 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Check out repository
-        uses: actions/checkout@v6 # v4 -> v6으로 버전 업그레이드
+        uses: actions/checkout@v4
 
       - name: Set up Python
-        uses: actions/setup-python@v6 # v5 -> v6으로 버전 업그레이드
+        uses: actions/setup-python@v5
         with:
           python-version: '3.11'
 
@@ -28,12 +28,13 @@ jobs:
           MAIL_USER: ${{ secrets.MAIL_USER }}
           MAIL_PASS: ${{ secrets.MAIL_PASS }}
           TO_MAIL: ${{ secrets.TO_MAIL }}
+          PWA_URL: ${{ secrets.PWA_URL }}
         run: python collector.py
 
       - name: Commit and push updated opinions
         run: |
           git config --local user.email "github-actions[bot]@users.noreply.github.com"
           git config --local user.name "github-actions[bot]"
-          git add opinions/
+          git add data.json history.json opinions/
           git diff-index --quiet HEAD || git commit -m "Auto-update daily opinions [skip ci]"
           git push
