@@ -23,13 +23,15 @@ jobs:
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
+          # pywebpush의 의존 패키지(http-ece)가 최신 setuptools에서 빌드 실패하는 이슈 방지
+          pip install "setuptools<66" wheel
           pip install -r requirements.txt
 
       - name: Run collector script
         env:
-          MAIL_USER: ${{ secrets.MAIL_USER }}
-          MAIL_PASS: ${{ secrets.MAIL_PASS }}
-          TO_MAIL: ${{ secrets.TO_MAIL }}
+          VAPID_PRIVATE_KEY: ${{ secrets.VAPID_PRIVATE_KEY }}
+          VAPID_SUBJECT: ${{ secrets.VAPID_SUBJECT }}
+          PUSH_SUBSCRIPTION: ${{ secrets.PUSH_SUBSCRIPTION }}
           PWA_URL: ${{ secrets.PWA_URL }}
         run: python collector.py
 
