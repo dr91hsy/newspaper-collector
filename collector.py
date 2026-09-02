@@ -10,35 +10,37 @@ import feedparser
 from bs4 import BeautifulSoup
 import requests
 
-# 조선일보 완전히 제외
-RSS_FEEDS = {
-    # 보수 디비전 (3편 목표)
-    "중앙일보": {"url": "https://rss.joongang.co.kr/son/joongang_opinion.xml", "group": "보수"},
-    "동아일보": {"url": "https://rss.donga.com/opinion.xml", "group": "보수"},
-    # 진보 디비전 (3편 목표)
-    "한겨레": {"url": "https://www.hani.co.kr/rss/opinion/", "group": "진보"},
-    "경향신문": {"url": "https://www.khan.co.kr/rss/rssdata/opinion_news.xml", "group": "진보"},
-    "오마이뉴스": {"url": "http://rss.ohmynews.com/rss/opinion.xml", "group": "진보"},
-    # 방송 디비전 (2편 목표)
-    "YTN": {"url": "https://m.ytn.co.kr/rss/opinion.xml", "group": "방송"}
+PRESS_CONFIG = {
+    # 보수 디비전 (목표 총 2~3편)
+    "중앙일보": {"url": "https://rss.joongang.co.kr/son/joongang_opinion.xml", "group": "보수", "quota": 2},
+    "동아일보": {"url": "https://rss.donga.com/opinion.xml", "group": "보수", "quota": 2},
+    
+    # 진보 디비전 (목표 총 2~3편)
+    "경향신문": {"url": "https://www.khan.co.kr/rss/rssdata/opinion_news.xml", "group": "진보", "quota": 2},
+    "오마이뉴스": {"url": "http://rss.ohmynews.com/rss/opinion.xml", "group": "진보", "quota": 2}
 }
 
 HEADERS = {
-    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
-    "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36"
 }
 
-THEMES = {
-    0: {"name": "삶 & 성찰", "desc": "일상, 관계, 삶의 태도, 휴식에 관한 생각"},
-    1: {"name": "문화 & 예술", "desc": "책, 영화, 미술, 음악, 공간, 여행 이야기"},
-    2: {"name": "인문 & 철학", "desc": "역사와 철학, 세상을 바라보는 지적 시선"},
-    3: {"name": "사회 & 트렌드", "desc": "세대, 라이프스타일, 기술과 인간성"},
-    4: {"name": "주말의 길목 (자유)", "desc": "위트 있는 수필과 가벼운 신변잡기"},
-    5: {"name": "주말의 휴식", "desc": "주말에 읽는 가벼운 에세이"},
-    6: {"name": "주말의 휴식", "desc": "주말에 읽는 가벼운 에세이"}
-}
-
+CONFIG_FILE = "config.json"
 HISTORY_FILE = "history.json"
+
+def load_config():
+    if os.path.exists(CONFIG_FILE):
+        with open(CONFIG_FILE, "r", encoding="utf-8") as f:
+            return json.load(f)
+    return {
+        "themes": {
+            "0": {"theme": "삶 & 성찰", "desc": "일상, 관계, 삶의 태도"},
+            "1": {"theme": "문화 & 예술", "desc": "책, 영화, 미술, 음악"},
+            "2": {"theme": "인문 & 철학", "desc": "역사와 철학, 세상을 보는 시선"},
+            "3": {"theme": "사회 & 트렌드", "desc": "세대, 라이프스타일, 기술"},
+            "4": {"theme": "주말의 길목", "desc": "가벼운 수필과 신변잡기"}
+        },
+        "exclude_keywords": ["사설", "[사설]", "분수대", "오늘과 내일", "횡설수설", "여적", "기자수첩", "정치", "대통령", "국회"]
+    }
 
 def load_history():
     if os.path.exists(HISTORY_FILE):
@@ -70,14 +72,10 @@ def fetch_full_content(url, press):
             article_body = soup.find("div", class_=re.compile(r"article_body|article_content")) or soup.select_one("#article_body")
         elif press == "동아일보":
             article_body = soup.find("div", class_=re.compile(r"article_txt|news_view")) or soup.select_one(".article_txt")
-        elif press == "한겨레":
-            article_body = soup.find("div", class_=re.compile(r"text|article-text")) or soup.select_one(".text")
         elif press == "경향신문":
             article_body = soup.find("div", class_=re.compile(r"art_body|articleBody")) or soup.select_one("#articleBody")
         elif press == "오마이뉴스":
             article_body = soup.find("div", class_=re.compile(r"at_contents|mini_at_contents")) or soup.select_one(".at_contents")
-        elif press == "YTN":
-            article_body = soup.find("div", class_=re.compile(r"zone-article|article_text|paragraph")) or soup.select_one("#zone-article")
 
         if not article_body:
             article_body = soup.find("article") or soup.find("main")
@@ -96,19 +94,20 @@ def fetch_full_content(url, press):
         print(f"[{press}] 원문 수집 실패: {e}")
         return ""
 
-def is_essay_candidate(title):
-    exclude_keywords = [
-        "사설", "[사설]", "社說", "태평로", "만물상", "팔면봉", "분수대", 
-        "오늘과 내일", "유레카", "여적", "횡설수설", "기자수첩", "데스크 칼럼",
-        "대통령", "국회", "여당", "야당", "검찰", "정치", "당정", "선거"
-    ]
+def is_essay_candidate(title, exclude_keywords):
     return not any(kw in title for kw in exclude_keywords)
 
 def fetch_and_save():
     now = datetime.now()
     today_str = now.strftime("%Y-%m-%d")
-    weekday = now.weekday()
-    theme_info = THEMES.get(weekday, THEMES[0])
+    weekday = str(now.weekday())
+
+    # 주말(토/일)인 경우 수집 패스 가능 구조 (월~금 테마 적용)
+    config = load_config()
+    themes = config.get("themes", {})
+    exclude_keywords = config.get("exclude_keywords", [])
+    
+    theme_info = themes.get(weekday, {"theme": "주말의 휴식", "desc": "주말에 읽는 가벼운 에세이"})
 
     output_dir = "opinions"
     os.makedirs(output_dir, exist_ok=True)
@@ -116,86 +115,61 @@ def fetch_and_save():
     daily_file = os.path.join(output_dir, f"{today_str}.json")
     latest_file = "data.json"
 
+    # 언론사별 3일 중복 히스토리 관리
     history = load_history()
-    # 14일 이전 히스토리는 삭제 정리를 위한 기준일
-    cutoff_date = (now - timedelta(days=14)).strftime("%Y-%m-%d")
+    cutoff_date = (now - timedelta(days=3)).strftime("%Y-%m-%d")
     history = {link: date for link, date in history.items() if date >= cutoff_date}
 
-    candidates = {"보수": [], "진보": [], "방송": []}
+    selected_articles = []
 
-    for press, info in RSS_FEEDS.items():
-        group = info["group"]
+    for press, info in PRESS_CONFIG.items():
         try:
             response = requests.get(info["url"], headers=HEADERS, timeout=10)
             feed = feedparser.parse(response.content)
 
+            collected_count = 0
             for entry in feed.entries:
+                if collected_count >= info["quota"]:
+                    break
+
                 title = entry.get("title", "제목 없음").strip()
-                if not is_essay_candidate(title):
+                if not is_essay_candidate(title, exclude_keywords):
                     continue
 
                 link = entry.get("link", "").strip()
-                # 이미 최근 14일 내에 큐레이션된 기사면 패스
-                if link in history:
+                if not link or link in history:
+                    continue
+
+                content = fetch_full_content(link, press)
+                if not content or len(content) < 100:
                     continue
 
                 pub_date = entry.get("published", entry.get("updated", today_str))
-                
-                candidates[group].append({
+
+                selected_articles.append({
+                    "id": f"{press}_{abs(hash(title))}",
                     "press": press,
+                    "group": info["group"],
                     "title": title,
-                    "link": link,
+                    "category": theme_info.get("theme", "에세이"),
                     "pub_date": pub_date,
-                    "group": group
+                    "link": link,
+                    "content": content
                 })
+
+                history[link] = today_str
+                collected_count += 1
+                print(f"[{press}] 수집 성공: {title}")
+
         except Exception as e:
-            print(f"[{press}] RSS 수집 오류: {e}")
-
-    selected_articles = []
-
-    def extract_valid_articles(item_list, limit):
-        count = 0
-        random.shuffle(item_list)
-        for item in item_list:
-            if count >= limit:
-                break
-
-            content = fetch_full_content(item["link"], item["press"])
-            
-            # 본문 길이 100자 미만 탈락
-            if not content or len(content) < 100:
-                print(f"[{item['press']}] 본문 미흡으로 필터링: {item['title']}")
-                continue
-
-            history[item["link"]] = today_str
-            selected_articles.append({
-                "id": f"{item['press']}_{abs(hash(item['title']))}",
-                "press": item["press"],
-                "group": item["group"],
-                "title": item["title"],
-                "category": theme_info["name"],
-                "pub_date": item["pub_date"],
-                "link": item["link"],
-                "content": content
-            })
-            count += 1
-
-    # 목표: 보수 3개, 진보 3개, 방송(YTN) 2개 = 총 8개
-    extract_valid_articles(candidates["보수"], 3)
-    extract_valid_articles(candidates["진보"], 3)
-    extract_valid_articles(candidates["방송"], 2)
-
-    # 부족분 보충 (혹시 특정 디비전이 모자라면 남은 다른 기사에서 8개 채움)
-    if len(selected_articles) < 8:
-        leftovers = candidates["보수"] + candidates["진보"] + candidates["방송"]
-        extract_valid_articles(leftovers, 8 - len(selected_articles))
+            print(f"[{press}] 수집 오류: {e}")
 
     save_history(history)
 
     db_payload = {
         "date": today_str,
-        "theme": theme_info["name"],
-        "theme_desc": theme_info["desc"],
+        "theme": theme_info.get("theme", "오늘의 생각"),
+        "theme_desc": theme_info.get("desc", "아침 에세이 큐레이션"),
         "updated_at": now.strftime("%Y-%m-%d %H:%M:%S"),
         "total_count": len(selected_articles),
         "articles": selected_articles
@@ -207,7 +181,7 @@ def fetch_and_save():
     with open(latest_file, "w", encoding="utf-8") as f:
         json.dump(db_payload, f, ensure_ascii=False, indent=2)
 
-    print(f"JSON DB 저장 완료: {daily_file} (오늘의 테마: {theme_info['name']} / 정상 총 {len(selected_articles)}편)")
+    print(f"JSON DB 저장 완료: {daily_file} (총 {len(selected_articles)}편)")
 
 def send_email():
     mail_user = os.getenv("MAIL_USER")
@@ -219,19 +193,32 @@ def send_email():
         return
 
     now = datetime.now()
-    theme_name = THEMES.get(now.weekday(), THEMES[0])["name"]
+    config = load_config()
+    theme_name = config.get("themes", {}).get(str(now.weekday()), {}).get("theme", "오늘의 에세이")
+
+    # Android Chrome Intent Scheme 링크 생성 (그룹웨어 인앱 브라우저 강제 이탈용)
+    intent_url = page_url
+    if page_url.startswith("https://"):
+        raw_url = page_url.replace("https://", "")
+        intent_url = f"intent://{raw_url}#Intent;scheme=https;package=com.android.chrome;end"
 
     msg = MIMEMultipart("alternative")
     msg['From'] = mail_user
     msg['To'] = to_mail
-    msg['Subject'] = f"[{theme_name}] {now.strftime('%Y-%m-%d')} 아침 에세이 8선"
+    msg['Subject'] = f"[{theme_name}] {now.strftime('%Y-%m-%d')} 아침 에세이"
 
     html_body = f"""
     <div style="font-family: sans-serif; padding: 20px; max-width: 500px; border: 1px solid #e2e8f0; border-radius: 12px;">
       <h2 style="color: #0f172a;">☕ 오늘 자 에세이 큐레이션</h2>
       <p style="color: #2563eb; font-weight: bold;">오늘의 테마: {theme_name}</p>
-      <p style="color: #475569; line-height: 1.5;">보수 3편, 진보 3편, YTN 2편 총 8편의 에세이가 준비되었습니다.<br>아래 버튼을 눌러 모바일 앱으로 읽어보세요.</p>
-      <a href="{page_url}" style="display: inline-block; background: #2563eb; color: #ffffff; padding: 12px 24px; text-decoration: none; border-radius: 8px; font-weight: bold; margin-top: 10px;">앱에서 읽기</a>
+      <p style="color: #475569; line-height: 1.5;">엄선된 보수/진보 4개 언론사의 에세이가 준비되었습니다.<br>아래 버튼을 눌러 모바일 앱으로 읽어보세요.</p>
+      
+      <div style="margin-top: 15px;">
+        <a href="{page_url}" target="_blank" rel="noopener noreferrer" style="display: inline-block; background: #2563eb; color: #ffffff; padding: 12px 20px; text-decoration: none; border-radius: 8px; font-weight: bold; margin-right: 5px;">웹으로 열기</a>
+        <a href="{intent_url}" style="display: inline-block; background: #0f172a; color: #ffffff; padding: 12px 20px; text-decoration: none; border-radius: 8px; font-weight: bold;">Chrome 앱 열기</a>
+      </div>
+      
+      <p style="color: #94a3b8; font-size: 12px; margin-top: 15px;">* 그룹웨어 내부에서 페이지가 안 열릴 경우 'Chrome 앱 열기'를 누르시거나 주소를 복사해 기본 브라우저에 붙여넣어 주세요.</p>
     </div>
     """
     msg.attach(MIMEText(html_body, 'html', 'utf-8'))
